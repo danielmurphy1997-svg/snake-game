@@ -9,7 +9,7 @@ source.exclude_dirs = .github, .git, __pycache__
 
 version = 1.0
 
-requirements = python3,pygame
+requirements = python3,pygame==2.1.2
 
 p4a.bootstrap = sdl2
 
@@ -19,7 +19,6 @@ fullscreen = 1
 android.permissions = VIBRATE
 android.api = 33
 android.minapi = 21
-android.ndk = 25b
 android.archs = arm64-v8a
 android.accept_sdk_license = True
 
