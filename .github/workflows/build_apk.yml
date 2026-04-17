@@ -64,7 +64,14 @@ jobs:
           ANDROIDNDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.2.9519653
           ANDROIDAPI: "33"
           ANDROIDMINAPI: "21"
-        run: buildozer -v android debug
+        run: buildozer -v android debug 2>&1 | tee buildozer_output.txt || true
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-log
+          path: buildozer_output.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
