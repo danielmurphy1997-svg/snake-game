@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Snake</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1e1e1e; overflow:hidden; touch-action:none; }
+  canvas { display:block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const GRID = 20;
+const POWERUPS = ['INVINCIBILITY','MAGNET','SHRINK','TIME_SLOW','FIREBALL','TELEPORT'];
+const PU_LABEL = {INVINCIBILITY:'G',MAGNET:'M',SHRINK:'S',TIME_SLOW:'T',FIREBALL:'F',TELEPORT:'P'};
+const PU_NAME  = {INVINCIBILITY:'Ghost',MAGNET:'Magnet',SHRINK:'Shrink',TIME_SLOW:'Slow',FIREBALL:'Fire',TELEPORT:'Portal'};
+const PU_DUR   = {INVINCIBILITY:300,MAGNET:250,SHRINK:0,TIME_SLOW:200,FIREBALL:400,TELEPORT:500};
+const CLR = {
+  bg:'#1e1e1e', grid:'#2a2a2a', head:'#00c800', body:'#008c00',
+  food:'#dc3232', shine:'#ffffff', txt:'#ffffff', gray:'#787878',
+  INVINCIBILITY:'#00dcdc', MAGNET:'#b400dc', SHRINK:'#ff8c00',
+  TIME_SLOW:'#3264ff', FIREBALL:'#ff6400', TELEPORT:'#ff64b4'
+};
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, COLS, ROWS;
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  COLS = Math.floor(W / GRID);
+  ROWS = Math.floor(H / GRID);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── state ──────────────────────────────────────────────────────────────────
+let snake, dir, nextDir, food, score, frame;
+let powerup, puTimer, effects, fireballs, portals;
+let over, paused;
+
+function cc(x, y) { return [x*GRID + GRID/2, y*GRID + GRID/2]; }
+
+function inSnake(pos, from=0) {
+  return snake.slice(from).some(s => s[0]===pos[0] && s[1]===pos[1]);
+}
+
+function occupied() {
+  const o = [...snake];
+  if (food)   o.push(food);
+  if (powerup) o.push(powerup.pos);
+  if (portals) o.push(...portals);
+  return o;
+}
+
+function rndCell(occ) {
+  let p;
+  do { p = [Math.floor(Math.random()*COLS), Math.floor(Math.random()*ROWS)]; }
+  while (occ.some(o => o[0]===p[0] && o[1]===p[1]));
+  return p;
+}
+
+function reset() {
+  const sx=Math.floor(COLS/2), sy=Math.floor(ROWS/2);
+  snake    = [[sx,sy],[sx-1,sy],[sx-2,sy]];
+  dir      = [1,0]; nextDir = [1,0];
+  food     = rndCell(snake);
+  score    = 0; frame = 0;
+  powerup  = null; puTimer = 120+Math.floor(Math.random()*100);
+  effects  = {}; fireballs = []; portals = null;
+  over     = false; paused = false;
+}
+
+function fps() {
+  let f = 8 + Math.floor(score/5);
+  if (effects.TIME_SLOW) f = Math.max(3, Math.floor(f/2));
+  return Math.min(f, 25);
+}
+
+function shoot() {
+  if (effects.FIREBALL) fireballs.push({pos:[...snake[0]], dir:[...dir]});
+}
+
+function applyPU(type) {
+  if (type==='SHRINK') {
+    snake = snake.slice(0, Math.max(3, snake.length-3));
+  } else if (type==='TELEPORT') {
+    const occ = occupied();
+    portals = [rndCell(occ), rndCell([...occ, rndCell(occ)])];
+    effects[type] = PU_DUR[type];
+  } else {
+    effects[type] = PU_DUR[type];
+  }
+}
+
+// ── update ─────────────────────────────────────────────────────────────────
+function update() {
+  if (over || paused) return;
+  frame++;
+
+  // tick effects
+  for (const k of Object.keys(effects)) {
+    if (--effects[k] <= 0) { delete effects[k]; if (k==='TELEPORT') portals=null; }
+  }
+
+  // magnet
+  if (effects.MAGNET) {
+    const [hx,hy]=snake[0], [fx,fy]=food;
+    const nf=[fx+(hx>fx?1:hx<fx?-1:0), fy+(hy>fy?1:hy<fy?-1:0)];
+    if (!inSnake(nf)) food=nf;
+  }
+
+  dir = nextDir;
+  const [dx,dy]=dir, [hx,hy]=snake[0];
+  let nh = [hx+dx, hy+dy];
+
+  if (effects.INVINCIBILITY) {
+    nh = [((nh[0]%COLS)+COLS)%COLS, ((nh[1]%ROWS)+ROWS)%ROWS];
+  } else {
+    if (nh[0]<0||nh[0]>=COLS||nh[1]<0||nh[1]>=ROWS||inSnake(nh,1)) { over=true; return; }
+  }
+
+  snake.unshift(nh);
+
+  // portal
+  if (portals) {
+    for (let i=0;i<2;i++) {
+      if (snake[0][0]===portals[i][0]&&snake[0][1]===portals[i][1]) {
+        snake[0]=[...portals[1-i]]; break;
+      }
+    }
+  }
+
+  // eat food
+  if (snake[0][0]===food[0]&&snake[0][1]===food[1]) {
+    score++; food=rndCell(occupied());
+  } else { snake.pop(); }
+
+  // collect powerup
+  if (powerup&&snake[0][0]===powerup.pos[0]&&snake[0][1]===powerup.pos[1]) {
+    applyPU(powerup.type); powerup=null;
+  }
+
+  if (powerup && --powerup.life<=0) powerup=null;
+
+  if (!powerup && --puTimer<=0) {
+    powerup={type:POWERUPS[Math.floor(Math.random()*POWERUPS.length)], pos:rndCell(occupied()), life:280};
+    puTimer=150+Math.floor(Math.random()*150);
+  }
+
+  // fireballs
+  for (let i=fireballs.length-1;i>=0;i--) {
+    const fb=fireballs[i];
+    fb.pos[0]+=fb.dir[0]; fb.pos[1]+=fb.dir[1];
+    if (fb.pos[0]<0||fb.pos[0]>=COLS||fb.pos[1]<0||fb.pos[1]>=ROWS) { fireballs.splice(i,1); continue; }
+    const idx=snake.slice(2).findIndex(s=>s[0]===fb.pos[0]&&s[1]===fb.pos[1]);
+    if (idx>=0) { snake=snake.slice(0,idx+2); fireballs.splice(i,1); }
+  }
+}
+
+// ── draw ───────────────────────────────────────────────────────────────────
+function fillCircle(x,y,r,color) {
+  ctx.fillStyle=color;
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+}
+
+function draw() {
+  ctx.fillStyle=CLR.bg; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle=CLR.grid; ctx.lineWidth=0.5;
+  for (let x=0;x<W;x+=GRID){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for (let y=0;y<H;y+=GRID){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+  // food
+  const [fcx,fcy]=cc(...food);
+  fillCircle(fcx,fcy,GRID/2-2,CLR.food);
+  fillCircle(fcx-3,fcy-3,2,CLR.shine);
+
+  // portals
+  if (portals) {
+    const pc=['#ff64b4','#c832ff'];
+    portals.forEach(([px,py],i)=>{
+      const [pcx,pcy]=cc(px,py);
+      const r=GRID/2-1+2*Math.abs(Math.sin(frame*0.15+i));
+      ctx.strokeStyle=pc[i]; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(pcx,pcy,r,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle=pc[i]; ctx.font='bold 9px monospace';
+      ctx.fillText(i+1, px*GRID+6, py*GRID+14);
+    });
+  }
+
+  // powerup
+  if (powerup) {
+    const [px,py]=powerup.pos;
+    const pulse=2*Math.abs(Math.sin(frame*0.1));
+    const sz=GRID-2+pulse, off=(GRID-sz)/2;
+    ctx.fillStyle=CLR[powerup.type];
+    ctx.fillRect(px*GRID+off, py*GRID+off, sz, sz);
+    ctx.fillStyle='#000'; ctx.font='bold 10px monospace';
+    ctx.fillText(PU_LABEL[powerup.type], px*GRID+5, py*GRID+14);
+  }
+
+  // fireballs
+  fireballs.forEach(fb=>{
+    const [fcx2,fcy2]=cc(...fb.pos);
+    fillCircle(fcx2,fcy2,GRID/2-1,CLR.SHRINK);
+    fillCircle(fcx2,fcy2,GRID/4,'#ffdc00');
+  });
+
+  // snake
+  const ghost=!!effects.INVINCIBILITY;
+  const r=GRID/2-1;
+  ctx.globalAlpha=ghost?0.55:1;
+  for (let i=0;i<snake.length;i++){
+    const [sx,sy]=snake[i]; const [scx,scy]=cc(sx,sy);
+    const col=ghost?(i===0?CLR.INVINCIBILITY:'#009696'):(i===0?CLR.head:CLR.body);
+    if (i+1<snake.length){
+      const [nx,ny]=snake[i+1]; const [ncx,ncy]=cc(nx,ny);
+      const horiz=scy===ncy;
+      ctx.fillStyle=ghost?'#009696':CLR.body;
+      ctx.fillRect(
+        Math.min(scx,ncx)-(horiz?0:r),
+        Math.min(scy,ncy)-(horiz?r:0),
+        Math.abs(ncx-scx)+(horiz?0:r*2),
+        Math.abs(ncy-scy)+(horiz?r*2:0)
+      );
+    }
+    fillCircle(scx,scy,r,col);
+  }
+  // eye
+  const [hcx,hcy]=cc(...snake[0]);
+  ctx.globalAlpha=1;
+  fillCircle(hcx+dir[0]*4, hcy+dir[1]*4, 2, '#000');
+
+  // HUD
+  ctx.fillStyle=CLR.txt; ctx.font='bold 16px monospace';
+  ctx.fillText(`Score: ${score}`,10,22);
+
+  let ex=W-10;
+  for (const [k,f] of Object.entries(effects)){
+    const t=`${PU_NAME[k]} ${Math.ceil(f/8)}s`;
+    ctx.font='12px monospace';
+    const tw=ctx.measureText(t).width; ex-=tw+8;
+    ctx.fillStyle=CLR[k]; ctx.fillText(t,ex,18);
+  }
+
+  ctx.fillStyle=CLR.gray; ctx.font='11px monospace';
+  ctx.fillText(`Speed:${fps()}`,10,H-8);
+  if (effects.FIREBALL){
+    ctx.fillStyle=CLR.FIREBALL;
+    ctx.fillText('TAP: fire',W/2-30,H-8);
+  }
+
+  // overlays
+  if (over){
+    ctx.fillStyle='rgba(0,0,0,0.78)'; ctx.fillRect(0,0,W,H);
+    ctx.textAlign='center';
+    ctx.fillStyle=CLR.FIREBALL; ctx.font='bold 38px monospace';
+    ctx.fillText('GAME OVER',W/2,H/2-50);
+    ctx.fillStyle=CLR.txt; ctx.font='22px monospace';
+    ctx.fillText(`Score: ${score}`,W/2,H/2+2);
+    ctx.fillStyle=CLR.head; ctx.font='18px monospace';
+    ctx.fillText('TAP to restart',W/2,H/2+46);
+    ctx.textAlign='left';
+  }
+  if (paused){
+    ctx.textAlign='center'; ctx.fillStyle='#ffdc00';
+    ctx.font='bold 38px monospace'; ctx.fillText('PAUSED',W/2,H/2);
+    ctx.textAlign='left';
+  }
+}
+
+// ── input ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e=>{
+  if (over){ if(/r/i.test(e.key)) reset(); return; }
+  const m={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]};
+  if (m[e.key]){const nd=m[e.key]; if(nd[0]!==-dir[0]||nd[1]!==-dir[1]) nextDir=nd;}
+  if (/p/i.test(e.key)) paused=!paused;
+  if (e.key===' ') shoot();
+});
+
+let t0=null;
+canvas.addEventListener('touchstart', e=>{ e.preventDefault(); t0={x:e.touches[0].clientX,y:e.touches[0].clientY}; },{passive:false});
+canvas.addEventListener('touchend', e=>{
+  e.preventDefault();
+  if (over){ reset(); return; }
+  if (!t0) return;
+  const dx=e.changedTouches[0].clientX-t0.x, dy=e.changedTouches[0].clientY-t0.y;
+  const adx=Math.abs(dx), ady=Math.abs(dy);
+  if (Math.max(adx,ady)<20){ shoot(); return; }
+  const nd=adx>ady?(dx>0?[1,0]:[-1,0]):(dy>0?[0,1]:[0,-1]);
+  if (nd[0]!==-dir[0]||nd[1]!==-dir[1]) nextDir=nd;
+  t0=null;
+},{passive:false});
+
+// ── loop ───────────────────────────────────────────────────────────────────
+let last=0;
+function loop(ts){
+  if (ts-last >= 1000/fps()){ update(); draw(); last=ts; }
+  requestAnimationFrame(loop);
+}
+reset();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
