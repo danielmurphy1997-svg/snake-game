@@ -21,9 +21,13 @@ jobs:
         with:
           gradle-version: '8.2'
 
+      - name: Generate Gradle wrapper
+        run: |
+          gradle wrapper --gradle-version 8.2
+          chmod +x gradlew
+
       - name: Build debug APK
-        run: gradle assembleDebug
-        working-directory: ${{ github.workspace }}
+        run: ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
