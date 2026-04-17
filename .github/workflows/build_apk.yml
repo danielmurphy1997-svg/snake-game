@@ -27,7 +27,23 @@ jobs:
           chmod +x gradlew
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug 2>&1 | tee /tmp/build.log; echo "EXIT=${PIPESTATUS[0]}" >> $GITHUB_ENV
+
+      - name: Commit build log on failure
+        if: env.EXIT != '0'
+        run: |
+          cp /tmp/build.log build_error.log
+          git config user.email "ci@github.com"
+          git config user.name "CI"
+          git add build_error.log
+          git commit -m "ci: build error log [skip ci]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fail if build failed
+        if: env.EXIT != '0'
+        run: exit 1
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
