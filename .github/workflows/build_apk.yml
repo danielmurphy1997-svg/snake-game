@@ -25,7 +25,7 @@ jobs:
             openjdk-17-jdk unzip zip \
             libffi-dev libssl-dev \
             zlib1g-dev liblzma-dev \
-            libsqlite3-dev
+            libsqlite3-dev autoconf libtool pkg-config
 
       - name: Install Buildozer and Cython
         run: |
@@ -37,6 +37,12 @@ jobs:
         with:
           path: ~/.buildozer
           key: buildozer-${{ hashFiles('buildozer.spec') }}
+
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p ~/.android
+          echo "count=0" > ~/.android/repositories.cfg
+          yes | buildozer android debug 2>&1 | head -5 || true
 
       - name: Build APK
         run: buildozer -v android debug
