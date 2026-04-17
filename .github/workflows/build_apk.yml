@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -17,32 +19,21 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.2'
 
       - name: Generate Gradle wrapper
-        run: |
-          gradle wrapper --gradle-version 8.2
-          chmod +x gradlew
+        run: gradle wrapper --gradle-version 8.2 && chmod +x gradlew
+
+      - name: Create local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug 2>&1 | tee /tmp/build.log; echo "EXIT=${PIPESTATUS[0]}" >> $GITHUB_ENV
-
-      - name: Commit build log on failure
-        if: env.EXIT != '0'
-        run: |
-          cp /tmp/build.log build_error.log
-          git config user.email "ci@github.com"
-          git config user.name "CI"
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/danielmurphy1997-svg/snake-game.git
-          git add build_error.log
-          git commit -m "ci: build error log [skip ci]"
-          git push
-
-      - name: Fail if build failed
-        if: env.EXIT != '0'
-        run: exit 1
+        run: ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
