@@ -35,11 +35,10 @@ jobs:
           cp /tmp/build.log build_error.log
           git config user.email "ci@github.com"
           git config user.name "CI"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/danielmurphy1997-svg/snake-game.git
           git add build_error.log
           git commit -m "ci: build error log [skip ci]"
           git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fail if build failed
         if: env.EXIT != '0'
